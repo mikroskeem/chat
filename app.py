@@ -1,22 +1,20 @@
-#!/usr/bin/env python
-import datetime
+#!/usr/bin/python3
 import flask
-import redis
-
+from uuid import uuid4
 
 app = flask.Flask(__name__)
-app.secret_key = 'asdf'
-red = redis.StrictRedis()
+app.secret_key = 'superasdf'
 
+chatroom = []
 
 def event_stream():
-    pubsub = red.pubsub()
-    pubsub.subscribe('chat')
-    # TODO: handle client disconnection.
-    for message in pubsub.listen():
-        print message
-        yield 'data: %s\n\n' % message['data']
-
+   oldmsglist = []
+   while True:
+      for u in chatroom:
+         if u["id"] not in oldmsglist:
+            msg = u['msg']
+            oldmsglist.append(u["id"])
+            yield 'data: [{}]: {}\n\n'.format(u['user'], msg)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -25,26 +23,25 @@ def login():
         return flask.redirect('/')
     return '<form action="" method="post">user: <input name="user">'
 
-
 @app.route('/post', methods=['POST'])
 def post():
+    if 'user' not in flask.session:
+        return flask.redirect('/login')
     message = flask.request.form['message']
-    user = flask.session.get('user', 'anonymous')
-    now = datetime.datetime.now().replace(microsecond=0).time()
-    red.publish('chat', u'[%s] %s: %s' % (now.isoformat(), user, message))
+    user = flask.session.get('user')
+    chatroom.append({"msg": message, "user":user, "id":uuid4()})
     return flask.Response(status=204)
 
 
 @app.route('/stream')
 def stream():
-    return flask.Response(event_stream(),
-                          mimetype="text/event-stream")
-
+    return flask.Response(event_stream(), mimetype="text/event-stream")
 
 @app.route('/')
 def home():
     if 'user' not in flask.session:
         return flask.redirect('/login')
+    user = flask.session.get('user')
     return """
         <!doctype html>
         <title>chat</title>
@@ -52,14 +49,14 @@ def home():
         <style>body { max-width: 500px; margin: auto; padding: 1em; background: black; color: #fff; font: 16px/1.6 menlo, monospace; }</style>
         <p><b>hi, %s!</b></p>
         <p>Message: <input id="in" /></p>
-        <pre id="out"></pre>
+        <div id="out"></div>
         <script>
             function sse() {
                 var source = new EventSource('/stream');
                 var out = document.getElementById('out');
                 source.onmessage = function(e) {
                     // XSS in chat is fun
-                    out.innerHTML =  e.data + '\\n' + out.innerHTML;
+                    out.innerHTML =  e.data + '<br>' + out.innerHTML;
                 };
             }
             $('#in').keyup(function(e){
@@ -74,7 +71,8 @@ def home():
     """ % flask.session['user']
 
 
+
 if __name__ == '__main__':
     app.debug = True
-    app.run()
+    app.run(host='0.0.0.0', port=7000, threaded=True)
 
