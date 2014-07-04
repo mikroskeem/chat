@@ -12,9 +12,8 @@ def event_stream():
    while True:
       for u in chatroom:
          if u["id"] not in oldmsglist:
-            msg = u['msg']
             oldmsglist.append(u["id"])
-            yield 'data: [{}]: {}\n\n'.format(u['user'], msg)
+            yield 'data: [{}]: {}\n\n'.format(u['user'], u["msg"])
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -55,7 +54,6 @@ def home():
                 var source = new EventSource('/stream');
                 var out = document.getElementById('out');
                 source.onmessage = function(e) {
-                    // XSS in chat is fun
                     out.innerHTML =  e.data + '<br>' + out.innerHTML;
                 };
             }
